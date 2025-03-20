@@ -77,3 +77,75 @@ Fungsi diatas membaca baris pertama dari permintaan HTTP yang diterima dan memer
 ```
 
 Perubahan dalam potongan kode di atas menggantikan kondisi if-else dengan match, yang memungkinkan penanganan beberapa kondisi secara lebih terstruktur. Jika baris permintaan HTTP (request_line) adalah "GET / HTTP/1.1", maka status respons yang dikirimkan adalah "200 OK" dan file yang dibaca adalah hello.html, sama seperti sebelumnya. Namun, jika permintaan adalah "GET /sleep HTTP/1.1", program akan menunda eksekusi selama 10 detik menggunakan thread::sleep sebelum mengirimkan respons "200 OK" dengan file hello.html. Untuk permintaan lainnya, respons yang dikirimkan adalah "404 NOT FOUND" dengan file 404.html. Perubahan ini memberikan penanganan khusus untuk permintaan yang mengakses endpoint /sleep, memberikan delay sebelum mengirimkan respons.
+
+
+## Commit 5 :  Multithreaded server using Threadpool
+
+```rust
+use std::{
+    sync::{mpsc, Arc, Mutex},
+    thread,
+};
+
+pub struct ThreadPool {
+    workers: Vec<Worker>,
+    sender: mpsc::Sender<Job>,
+}
+
+type Job = Box<dyn FnOnce() + Send + 'static>;
+
+impl ThreadPool {
+    pub fn new(size: usize) -> ThreadPool {
+        assert!(size > 0);
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let mut workers = Vec::with_capacity(size);
+        for id in 0..size {
+            workers.push(Worker::new(id, Arc::clone(&receiver)));
+        }
+        ThreadPool { workers, sender }
+    }
+
+    pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let job = Box::new(f);
+        self.sender.send(job).unwrap();
+    }
+}
+
+struct Worker {
+    id: usize,
+    thread: thread::JoinHandle<()>,
+}
+
+impl Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+        let thread = thread::spawn(move || loop {
+            let job = receiver.lock().unwrap().recv().unwrap();
+            println!("Worker {id} got a job; executing.");
+            job();
+        });
+
+        Worker { id, thread }
+    }
+}
+```
+
+ThreadPool merupakan kumpulan thread yang sudah dibuat sebelumnya dan siap mengeksekusi tugas secara paralel. Dalam kode di atas, setiap koneksi masuk dari klien dikemas sebagai sebuah tugas (job) yang dikirim melalui channel ke ThreadPool. Setiap worker di dalam pool terus-menerus mengambil tugas dari channel dan menjalankannya. Pendekatan ini menghindari overhead pembuatan thread baru untuk setiap koneksi, sehingga memungkinkan server menangani beberapa koneksi secara bersamaan dengan lebih efisien dan optimal dalam penggunaan sumber daya.
+
+implementasi pada main.rs
+
+```rust
+fn main() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let pool = ThreadPool::new(4);
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+        pool.execute(|| {
+            handle_connection(stream);
+        }); 
+    }
+}
+```
