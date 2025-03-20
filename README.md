@@ -63,3 +63,17 @@ Fungsi diatas membaca baris pertama dari permintaan HTTP yang diterima dan memer
 
 ![alt text](FileScreenshot/oops!.png)
 
+## Commit 4 :  Simulation of slow request.
+
+```rust
+    let (status_line, filename) = match &request_line[..] {
+        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"), 
+        "GET /sleep HTTP/1.1" => {
+        thread::sleep(Duration::from_secs(10)); 
+        ("HTTP/1.1 200 OK", "hello.html") 
+        }
+        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+    };
+```
+
+Perubahan dalam potongan kode di atas menggantikan kondisi if-else dengan match, yang memungkinkan penanganan beberapa kondisi secara lebih terstruktur. Jika baris permintaan HTTP (request_line) adalah "GET / HTTP/1.1", maka status respons yang dikirimkan adalah "200 OK" dan file yang dibaca adalah hello.html, sama seperti sebelumnya. Namun, jika permintaan adalah "GET /sleep HTTP/1.1", program akan menunda eksekusi selama 10 detik menggunakan thread::sleep sebelum mengirimkan respons "200 OK" dengan file hello.html. Untuk permintaan lainnya, respons yang dikirimkan adalah "404 NOT FOUND" dengan file 404.html. Perubahan ini memberikan penanganan khusus untuk permintaan yang mengakses endpoint /sleep, memberikan delay sebelum mengirimkan respons.
